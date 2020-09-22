@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
 import { useQuery } from 'urql';
 import moment from 'moment';
+import { useMetricData } from '../hooks/useMetricData';
 
 interface MetricVisualizationProps {
   metrics: string[];
@@ -32,34 +33,62 @@ const MetricVisualization: React.FC<MetricVisualizationProps> = ({ metrics }) =>
       })),
     },
   });
+  const [chartMap, setChartMap] = useState<Map<number, any>>(new Map());
+  const [metricUnitMap, setMetricUnitMap] = useState<Map<string, string>>(new Map());
+  const [units, setUnits] = useState<Set<string>>(new Set());
+
+  const newData = useMetricData();
   const { fetching, data } = results;
+
+  useEffect(() => {
+    if (newData) {
+      setChartMap(prevMap => {
+        if (prevMap.has(newData.at)) {
+          // Append to existing data
+          const existing = prevMap.get(newData.at);
+          prevMap.set(newData.at, { ...existing, ...newData });
+        } else {
+          prevMap.set(newData.at, newData);
+        }
+        return prevMap;
+      });
+    }
+  }, [newData]);
+
+  useEffect(() => {
+    if (!fetching && data) {
+      const tempChartMap = new Map<number, any>();
+      const tempMetricUnitMap = new Map<string, string>();
+      const tempUnits = new Set<string>();
+
+      const chartData = data.getMultipleMeasurements;
+      chartData.forEach((data: any) => {
+        const measurements = data.measurements;
+        const firstMetric = measurements[0];
+        tempMetricUnitMap.set(firstMetric.metric, firstMetric.unit);
+        measurements.forEach((measurement: any) => {
+          if (!tempUnits.has(measurement.unit)) {
+            tempUnits.add(measurement.unit);
+          }
+          const newData = { [measurement.metric]: measurement.value };
+          if (tempChartMap.has(measurement.at)) {
+            // Append to existing data
+            const existing = tempChartMap.get(measurement.at);
+            tempChartMap.set(measurement.at, { ...existing, ...newData });
+          } else {
+            tempChartMap.set(measurement.at, newData);
+          }
+          setChartMap(tempChartMap);
+          setMetricUnitMap(tempMetricUnitMap);
+          setUnits(tempUnits);
+        });
+      });
+    }
+  }, [fetching, data]);
 
   if (fetching || !data) {
     return null;
   }
-
-  const chartData = data.getMultipleMeasurements;
-  const units = new Set<string>();
-  const chartMap = new Map<number, any>();
-  const metricUnitMap = new Map<string, string>();
-  chartData.forEach((data: any) => {
-    const measurements = data.measurements;
-    const firstMetric = measurements[0];
-    metricUnitMap.set(firstMetric.metric, firstMetric.unit);
-    measurements.forEach((measurement: any) => {
-      if (!units.has(measurement.unit)) {
-        units.add(measurement.unit);
-      }
-      const newData = { [measurement.metric]: measurement.value };
-      if (chartMap.has(measurement.at)) {
-        // Append to existing data
-        const existing = chartMap.get(measurement.at);
-        chartMap.set(measurement.at, { ...existing, ...newData });
-      } else {
-        chartMap.set(measurement.at, newData);
-      }
-    });
-  });
 
   const charDataFinal = Array.from(chartMap).reduce(
     (newArray, cd) => {
@@ -68,7 +97,7 @@ const MetricVisualization: React.FC<MetricVisualizationProps> = ({ metrics }) =>
     [] as any,
   );
 
-  return (
+  return charDataFinal.length > 0 ? (
     <LineChart
       width={1200}
       height={500}
@@ -100,7 +129,7 @@ const MetricVisualization: React.FC<MetricVisualizationProps> = ({ metrics }) =>
         />
       ))}
     </LineChart>
-  );
+  ) : null;
 };
 
 export default React.memo(MetricVisualization);

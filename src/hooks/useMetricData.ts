@@ -4,6 +4,7 @@ import { useRef } from 'react';
 interface MetricDataType {
   metric: string;
   value: number;
+  at: number;
 }
 
 const newMetricData = `
@@ -11,6 +12,7 @@ const newMetricData = `
     newMeasurement {
         metric
         value
+        at
       }
   }
 `;
@@ -20,10 +22,10 @@ const handleSubscription = (prev: any, data: any) => {
   return data.newMeasurement;
 };
 
-export const useMetricData = (metric: string) => {
+export const useMetricData = (metric?: string) => {
   const prev = useRef<MetricDataType>();
   const [response] = useSubscription({ query: newMetricData }, handleSubscription);
-  if (response && response.data && response.data.metric === metric) {
+  if (response && response.data && (!metric || response.data.metric === metric)) {
     prev.current = response.data;
     return response.data;
   }
